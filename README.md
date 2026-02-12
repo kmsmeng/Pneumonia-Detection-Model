@@ -30,3 +30,12 @@ https://pytorch.org/get-started/locally/
 4. Install dependencies
 pip install -r requirements.txt
 
+5. To Download the Kaggle Dataset(RSNA Pneumonia Dataset)
+- create a .env file
+- get your 'username' and 'key' from the kaggle
+- example .env file:
+
+KAGGLE_USERNAME=yourusername
+KAGGLE_KEY=stringkey
+
+- after that the first code block will download the dataset locally

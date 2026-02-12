@@ -7,4 +7,7 @@ joblib
 opencv-python
 scikit-learn
 tqdm
-albumentations
+albumentationsx
+
+kaggle
+python-dotenv
