@@ -8,6 +8,6 @@ opencv-python
 scikit-learn
 tqdm
 albumentationsx
-
 kaggle
 python-dotenv
+ultralytics
