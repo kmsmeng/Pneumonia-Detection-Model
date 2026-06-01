@@ -11,3 +11,4 @@ albumentationsx
 kaggle
 python-dotenv
 ultralytics
+wandb

@@ -3,3 +3,4 @@ YOLO_format_data/
 .kaggle/
 .env
 myenv
+wandb
