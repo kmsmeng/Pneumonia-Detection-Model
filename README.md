@@ -1,7 +1,7 @@
 ## Pneumonia Detection Model
 
 Deep learning model for detecting pneumonia from chest X-rays.
-Fine Tuned YOLO-V8 on RSNA Pneumonia Dataset. 
+Fine Tuned YOLO-26 on RSNA Pneumonia Dataset. 
 An Object Detection Model that outputs bounding box for pneumonia spots on X-Ray Scans Input.
 
 ### Setup
