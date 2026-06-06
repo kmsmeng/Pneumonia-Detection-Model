@@ -12,3 +12,4 @@ kaggle
 python-dotenv
 ultralytics
 wandb
+mlxtend
