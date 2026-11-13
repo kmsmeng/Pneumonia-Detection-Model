@@ -10,20 +10,20 @@ An Object Detection Model that outputs bounding box for pneumonia spots on X-Ray
 git clone https://github.com/kmsmeng/Pneumonia-Detection-Model.git
 cd Pneumonia-Detection-Model
 
-2. Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Mac/Linux
-venv\Scripts\activate     # Windows
+2. Create virtual environment (Python 3.13)
+python -m venv .venv
+source .venv/bin/activate  # Mac/Linux
+.venv\Scripts\activate     # Windows
 
-3. Set up Pytorch
-https://pytorch.org/get-started/locally/
+3. Set up PyTorch (install this BEFORE requirements.txt)
+pip install torch==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cu130
 
-To find out about the compute platform:
-- go to kernel and type 'nvidia-smi'
+This is the CUDA 13.0 build. If your GPU/driver supports a different CUDA version:
+- run 'nvidia-smi' in a terminal
 - it will show something like 'CUDA Version: 13.0'. That is your Compute Platform.
-- it will give you a command. run that in your terminal.
+- pick the matching command at https://pytorch.org/get-started/locally/ (keep torch==2.10.0)
 
-4. Install dependencies
+4. Install dependencies (versions are pinned)
 pip install -r requirements.txt
 
 5. To Download the Kaggle Dataset(RSNA Pneumonia Dataset)

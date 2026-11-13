@@ -1,0 +1,15 @@
+# Pipeline smoke test: ~2% of train for 1 epoch. Checks that everything runs end to end; metrics are meaningless.
+#   python src/train.py --config configs/smoke.yaml --no-wandb
+name: smoke
+model: models/yolo26n.pt
+data: data/yolo/data.yaml
+
+train:
+  epochs: 1
+  fraction: 0.02
+  imgsz: 640
+  batch: 16
+  workers: 2
+  plots: true
+  hsv_h: 0.0
+  hsv_s: 0.0

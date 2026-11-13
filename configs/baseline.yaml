@@ -1,0 +1,28 @@
+# Phase 0 baseline: small model, built-in augmentation only, no offline augmentation.
+# Everything under `train:` is passed verbatim to Ultralytics `model.train()`.
+name: baseline_n640
+wandb_project: rsna-pneumonia-detection
+model: models/yolo26n.pt
+data: data/yolo/data.yaml
+
+train:
+  epochs: 30
+  patience: 10
+  imgsz: 640
+  batch: 16          # fits a 4 GB GPU at 640 with the nano model
+  workers: 2         # Windows: each worker is a full process; 4 ran out of memory on 16 GB RAM
+  optimizer: auto
+  seed: 0
+  deterministic: true
+  plots: true
+  # augmentation: X-rays are grayscale, so hue/saturation jitter is meaningless
+  hsv_h: 0.0
+  hsv_s: 0.0
+  hsv_v: 0.4
+  fliplr: 0.5
+  flipud: 0.0
+  degrees: 0.0
+  translate: 0.1
+  scale: 0.5
+  mosaic: 1.0
+  close_mosaic: 10

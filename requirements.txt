@@ -1,15 +1,35 @@
-pydicom
-pyyaml
-pandas
-matplotlib
-seaborn
-joblib
-opencv-python
-scikit-learn
-tqdm
-albumentationsx
-kaggle
-python-dotenv
-ultralytics
-wandb
-mlxtend
+# Python 3.13. Pinned to versions verified working together.
+# Install PyTorch FIRST (CUDA build), see README:
+#   pip install torch==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cu130
+
+# Core training
+ultralytics==8.4.14
+albumentationsx==2.0.16
+wandb==0.27.0
+
+# Data
+pydicom==3.0.1
+numpy==2.3.5
+pandas==3.0.0
+opencv-python==4.13.0.92
+pillow==12.0.0
+PyYAML==6.0.3
+scikit-learn==1.8.0
+joblib==1.5.3
+tqdm==4.67.3
+
+# Dataset download
+kaggle==2.0.0
+python-dotenv==1.2.1
+
+# Plotting / analysis
+matplotlib==3.10.8
+seaborn==0.13.2
+mlxtend==0.24.0
+
+# Export for the web demo
+onnx==1.21.0
+onnxslim==0.1.92
+
+# Notebooks
+ipykernel==7.2.0

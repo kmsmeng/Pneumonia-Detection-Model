@@ -8,26 +8,61 @@ Fine-tunes Ultralytics YOLO26 as a single-class object detector (`pneumonia`) on
 
 `PROJECT_REVIEW.md` holds a critique of the current state and a phased plan. Read it before changing the pipeline. Its key point: the existing `runs/detect/medical_imaging_v4` weights are a nano model at 640 px, trained in February 2026 on an older split, not the yolo26m/1024 config the notebook describes. Treat all existing metrics as untrustworthy until the model is retrained on a frozen train/val/test split.
 
+## Commands
+
+Run from the repo root with `.venv\Scripts\python.exe`:
+
+```
+python src/make_splits.py                               # ONCE: frozen train/val/test split -> splits/*.csv (refuses to overwrite)
+python src/prepare_data.py [--clean]                    # splits -> data/yolo (PNG + labels + data.yaml)
+python src/train.py --config configs/smoke.yaml --no-wandb   # ~2-minute end-to-end pipeline check
+python src/train.py --config configs/baseline.yaml      # real run -> runs/detect/<name>/
+python src/train.py --config configs/baseline.yaml --set workers=8 batch=32   # per-machine overrides of `train:` keys
+python src/train.py --resume runs/detect/<name>         # continue an interrupted run (same W&B run)
+python src/evaluate.py runs/detect/<name>               # val: box mAP + image-level AUC/sens/spec + consistency checks
+python src/evaluate.py runs/detect/<name> --split test --confirm-test   # final, one-time test evaluation
+```
+
+- The config's `name` is the run directory and the W&B run name. `train.py` refuses to reuse an existing name. A new experiment means a new config file.
+- Everything under `train:` in a config goes verbatim to Ultralytics `model.train()`. `train.py` starts the W&B run itself (logging the config, split fingerprint and git commit), and Ultralytics' callback logs into that same run.
+- Each run directory gets `config.yaml`, `provenance.json` (split fingerprint) and `wandb_id.txt`. `evaluate.py` refuses to evaluate a run trained on a different split.
+- The split is 70/15/15 (18678/4003/4003 images, 22.5% positive), stratified on Target + view, seed 42. Never regenerate it with `--force` unless you are intentionally invalidating every trained model.
+
+### Cluster (Magnolia HPC, SLURM): see `Magnolia_HPC.md`
+
+```
+bash slurm/setup_env.sh                                 # once, on the login node: py3.11 venv, torch 2.5.1+cu124, data/ -> /scratch symlink, base weights
+sbatch slurm/prepare_data.sbatch                        # CPU job: Kaggle download + unzip + prepare_data.py
+sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submitting resumes if last.pt exists
+```
+
+- The cluster runs CentOS 7 (glibc 2.17), which caps torch at 2.5.1. The laptop uses torch 2.10, and Ultralytics is pinned to the same version on both.
+- Always request `--gres=gpu:p100:1`. The K80 node is unusable.
+- Compute nodes have internet, so W&B logs online.
+- Submit from the repo root. Logs go to `slurm/logs/`.
+
 ## Layout
 
 - `notebooks/archive/main.ipynb` is the original all-in-one notebook (download → EDA → preprocessing → augmentation → training → eval). It is kept for reference. Its paths are rewritten relative to `notebooks/archive/` (`../../data/...`), and its cells depend on in-memory state from earlier cells.
 - `NOTES.md` holds the research notes and TODOs copied from the end of that notebook.
-- Planned (not yet created): `src/` scripts (`prepare_data.py`, `train.py`, `evaluate.py`, `export.py`) driven by `configs/*.yaml`, `splits/` (committed patientId CSVs per split), `notebooks/01_eda.ipynb`, and `web/`.
+- `src/` holds the pipeline scripts, with shared paths in `src/common.py`. `configs/` holds one YAML per experiment. `splits/` holds the committed patientId CSVs with view/age/sex metadata.
+- Still planned: `src/export.py` (ONNX), `web/` (the inference site, an empty placeholder for now), and a results-analysis notebook (charts for the site). EDA is complete in the archived notebook and is not being redone.
 - `assets/` holds images for the README and site.
-- Gitignored and kept local only: `data/raw/` (extracted Kaggle data), `data/yolo/` (generated YOLO dataset), `models/` (base weights such as `yolo26m.pt`), `runs/` (Ultralytics outputs), `wandb/`, `myenv/` (the virtualenv), `.env`.
+- Gitignored and kept local only: `data/raw/` (extracted Kaggle data), `data/yolo/` (generated YOLO dataset), `models/` (base weights such as `yolo26m.pt`), `runs/` (Ultralytics outputs), `wandb/`, `.venv/`, `.env`.
 
 ## Environment
 
-- `myenv\Scripts\activate`, then `pip install -r requirements.txt`. Install PyTorch separately with the CUDA-specific command from pytorch.org (check the CUDA version with `nvidia-smi`).
+- Python 3.13 venv at `.venv/`. Run scripts with `.venv\Scripts\python.exe`.
+- Setup: install torch first (`pip install torch==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cu130`), then `pip install -r requirements.txt`. All versions are pinned.
+- GPU: an RTX 3050 Laptop with 4 GB VRAM. Large models at imgsz 1024 (for example yolo26m with batch 8) will probably run out of memory. Prefer n/s models at 512–640, or use `batch=-1` (auto batch).
 - `albumentationsx` (in requirements) is imported as `albumentations`.
 - `.env` provides `KAGGLE_USERNAME` / `KAGGLE_KEY`. W&B is used for experiment tracking. Prefer Ultralytics' built-in W&B logging over manual `wandb.log` of hyperparameters, so the logged config can't drift from the real training args.
 
 ## Data pipeline facts
 
 - Raw: `data/raw/stage_2_train_images/{patientId}.dcm`, plus `stage_2_train_labels.csv` (pixel `x, y, width, height`, top-left origin, one row per box, so one patient can have several rows). Every image is 1024×1024.
-- YOLO dataset `data/yolo/`: `images/{train,val}`, `labels/{train,val}`, and `data.yaml` (`nc: 1`, `names: [pneumonia]`, paths relative to the yaml). Negative images get an **empty** `.txt` label file. Offline-augmented positives are named `{patientId}(1|2|3).jpg` (train only).
-- Generation steps skip files that already exist. After changing preprocessing, delete the affected outputs and `data/yolo/labels/*.cache`.
-- The current split is 80/20, stratified on `Target + ViewPosition`, `random_state=42`.
+- YOLO dataset `data/yolo/` (built by `prepare_data.py`): `images/{train,val,test}/*.png` (lossless, full 1024 resolution), `labels/{train,val,test}/*.txt`, and `data.yaml` (`nc: 1`, `names: [pneumonia]`). Negative images get an **empty** `.txt` label file. There is no offline augmentation; Ultralytics augments at train time.
+- `prepare_data.py` skips files that already exist. After changing preprocessing, rebuild with `--clean`.
 
 ## Gotchas
 
