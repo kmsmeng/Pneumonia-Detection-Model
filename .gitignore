@@ -1,6 +1,22 @@
+# Data (Kaggle download + generated YOLO dataset)
 data/
-YOLO_format_data/
 .kaggle/
+
+# Secrets
 .env
-myenv
-wandb
+
+# Virtual environments
+myenv/
+.venv/
+
+# Model weights & training outputs (versioned in W&B instead)
+models/
+runs/
+*.pt
+*.onnx
+*.torchscript
+wandb/
+
+# Python / Jupyter
+__pycache__/
+.ipynb_checkpoints/
