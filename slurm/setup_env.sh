@@ -4,7 +4,7 @@
 #   bash slurm/setup_env.sh
 #
 # - Python 3.11 venv in .venv/ (code + venv live in $HOME)
-# - torch 2.5.1 (cu124): the newest torch with pip wheels for CentOS 7 / glibc 2.17;
+# - torch 2.5.1 (cu124) + requirements-cluster.txt, pre-built wheels only (CentOS 7 / glibc 2.17);
 #   CUDA 12.4 matches the P100 node's driver (550)
 # - data/ -> symlink to /scratch (home is 99% full; the dataset needs ~15 GB)
 # - downloads the base YOLO weights into models/
@@ -20,9 +20,16 @@ python3 --version
 [ -d .venv ] || python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu124
-pip install -r requirements.txt
+# One resolve for everything. --only-binary=:all: makes pip pick versions with pre-built wheels for
+# CentOS 7 (glibc 2.17) instead of compiling from source (which fails here, e.g. numpy 2.4).
+# PyPI is added as an extra index so torch's dependencies (numpy, ...) resolve from it.
+pip install --only-binary=:all: \
+    --index-url https://download.pytorch.org/whl/cu124 \
+    --extra-index-url https://pypi.org/simple \
+    torch==2.5.1 torchvision==0.20.1 -r requirements-cluster.txt
 pip check
+pip freeze > requirements-cluster.lock.txt   # exact versions on the cluster; commit this file
+echo "Wrote requirements-cluster.lock.txt"
 
 # Data on scratch, linked into the repo so the scripts' data/ paths keep working.
 mkdir -p "$DATA_DIR"

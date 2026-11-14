@@ -37,6 +37,7 @@ sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submittin
 ```
 
 - The cluster runs CentOS 7 (glibc 2.17), which caps torch at 2.5.1. The laptop uses torch 2.10, and Ultralytics is pinned to the same version on both.
+- The cluster installs from `requirements-cluster.txt` with `--only-binary=:all:`. Many of the laptop's exact pins (numpy 2.3+, pandas 3) have no glibc-2.17 wheels, and building from source fails. The resolved versions are frozen into `requirements-cluster.lock.txt`. Keep `ultralytics` and `albumentationsx` pinned identically in both requirements files.
 - Always request `--gres=gpu:p100:1`. The K80 node is unusable.
 - Compute nodes have internet, so W&B logs online.
 - Submit from the repo root. Logs go to `slurm/logs/`.
