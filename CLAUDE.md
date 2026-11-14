@@ -6,7 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Fine-tunes Ultralytics YOLO26 as a single-class object detector (`pneumonia`) on the Kaggle RSNA Pneumonia Detection Challenge dataset. It outputs bounding boxes for pneumonia regions on chest X-rays. The end goals are a well-evaluated model, a results write-up with metrics charts for a portfolio site, and an inference website (planned: ONNX export run in the browser, living in `web/`).
 
-`PROJECT_REVIEW.md` holds a critique of the current state and a phased plan. Read it before changing the pipeline. Its key point: the existing `runs/detect/medical_imaging_v4` weights are a nano model at 640 px, trained in February 2026 on an older split, not the yolo26m/1024 config the notebook describes. Treat all existing metrics as untrustworthy until the model is retrained on a frozen train/val/test split.
+`PIPELINE.md` explains each pipeline step, why it's done that way, and the current project status. Keep its status table updated as steps complete. `PROJECT_REVIEW.md` holds the original critique and a phased plan. Read it before changing the pipeline. Its key point: the existing `runs/detect/medical_imaging_v4` weights are a nano model at 640 px, trained in February 2026 on an older split, not the yolo26m/1024 config the notebook describes. Treat all existing metrics as untrustworthy until the model is retrained on a frozen train/val/test split.
+
+## Keeping the docs current
+
+After finishing any piece of work, update the relevant docs as part of the same step, without waiting to be asked:
+
+| File | Holds | Update when |
+|---|---|---|
+| `PIPELINE.md` | How each pipeline step works and why; the **status table** and **What's next** | Any step completes, a decision is made, the pipeline or a config changes, results come in |
+| `CLAUDE.md` | Commands, layout, environment, gotchas | Commands, scripts, layout or environment change; a new gotcha turns up |
+| `Magnolia_HPC.md` | Cluster facts, survey output, implications | New cluster info (access, scratch, GPUs, admin replies) |
+| `PROJECT_REVIEW.md` | The original critique and phased plan (historical) | Only to add a dated status note; don't rewrite the critique |
+| `README.md` | Public summary, setup, results | Setup steps change; final results and demo are ready |
+| `NOTES.md` | User's research notes (verbatim) | Only if the user asks |
+
+Work in small steps and let the user make the decisions between them.
 
 ## Commands
 

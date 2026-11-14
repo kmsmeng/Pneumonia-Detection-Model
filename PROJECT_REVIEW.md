@@ -2,6 +2,10 @@
 
 *Written 2026-11-13. Based on `main.ipynb`, `runs/detect/*/args.yaml` and `results.csv`, and the git history.*
 
+> **Update 2026-11-14:** most of Phase 0 is now implemented: the frozen split, the PNG data pipeline, config-driven
+> training, the evaluation checks and the cluster scripts. See [`PIPELINE.md`](PIPELINE.md) for how it works now
+> and what's still pending. The critique below describes the project *before* those changes.
+
 ---
 
 ## TL;DR
