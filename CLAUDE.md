@@ -58,6 +58,7 @@ sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submittin
 - Data on the cluster currently lives in `$HOME/pneumonia-data` (`data/` symlink), because there's no scratch directory yet.
 - Compute nodes have internet, so W&B logs online.
 - Submit from the repo root. Logs go to `slurm/logs/`.
+- In an interactive login shell, activate first: `module load python/3.11.5 && source .venv/bin/activate`. Otherwise `wandb`, `yolo` and the project's `python` aren't on PATH. Job scripts do this themselves.
 
 ## Layout
 
