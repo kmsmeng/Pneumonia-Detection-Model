@@ -16,15 +16,18 @@ from pathlib import Path
 
 import numpy as np
 from sklearn.metrics import average_precision_score, roc_auc_score
+from tqdm import tqdm
 
 from common import YOLO_DIR, load_config, load_split, resolve, splits_fingerprint
 
 
 def image_scores(model, image_paths: list[Path], imgsz: int, batch: int) -> np.ndarray:
+    """Highest box confidence per image (0 if no box). A list of paths is inferred as one batch."""
     scores = np.zeros(len(image_paths), dtype=np.float32)
-    for start in range(0, len(image_paths), batch):
+    for start in tqdm(range(0, len(image_paths), batch), desc="image-level predictions", unit="batch"):
         chunk = [str(p) for p in image_paths[start:start + batch]]
-        for i, r in enumerate(model.predict(chunk, imgsz=imgsz, conf=0.001, verbose=False)):
+        results = model.predict(chunk, imgsz=imgsz, conf=0.001, verbose=False)
+        for i, r in enumerate(results):
             if len(r.boxes):
                 scores[start + i] = float(r.boxes.conf.max())
     return scores

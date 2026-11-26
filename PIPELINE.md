@@ -106,6 +106,8 @@ Handling the imbalance is therefore **an experiment, not an assumption**. After 
 
 ## Step 3: Training (`src/train.py` + `configs/`)
 
+**Image size.** The PNGs stay at full 1024×1024 on disk. Ultralytics resizes each image to the config's `imgsz` (e.g. 640) on the fly, for both training and validation. Labels are normalized (0–1), so they're valid at any size, and predictions are mapped back to original 1024 px coordinates. Trying another resolution is just a config change (`imgsz: 768`), with no data rebuild.
+
 **Configs are the single source of truth.** Each experiment is one YAML file in `configs/`. Everything under `train:` is passed verbatim to Ultralytics `model.train()`.
 
 | Config | Purpose |
@@ -175,9 +177,17 @@ Results are saved to `runs/detect/<name>/eval_<split>.json` and added to the run
 | | Per epoch | 30 epochs | Basis |
 |---|---|---|---|
 | Laptop (RTX 3050, 2 workers) | ~20 min | ~10 h | Measured: ~1 s per batch of 16 in the smoke run and earlier runs |
-| Cluster (1× P100, 8 workers) | ~6–12 min | ~3–6 h | **Estimate**; replace with the measured `s/it` from the cluster smoke run |
+| Cluster (1× P100, 8 workers) | ~6.5 min | ~3.3 h | **Measured** in the cluster smoke run (2026-11-26): 3.2 batches/s at batch 16 + ~20 s validation. Used 2.6 GB of 12 GB GPU memory. |
 
-- The laptop is likely bottlenecked on data loading (only 2 workers fit in RAM), not on the GPU. The cluster's 8 workers keep the GPU busy. GPU vs. GPU, a P100 and an RTX 3050 Laptop are roughly comparable.
+Estimates for bigger configs on one P100 (not yet measured):
+
+| Config | Per epoch | 30 epochs |
+|---|---|---|
+| yolo26n, 768 px | ~9 min | ~4.5 h |
+| yolo26s, 640 px | ~13–20 min | ~7–10 h |
+| yolo26s, 768 px | ~20–28 min | ~10–14 h |
+
+- The cluster measured ~3× faster than the laptop for the same config. Most of the gain is likely from data loading: 8 workers on the cluster vs. 2 on the laptop, where more ran out of RAM.
 - The cluster's real advantages are 12 GB VRAM (bigger models and images), **two P100s for parallel experiments**, long uninterrupted runs, and a free laptop.
 - A bigger config (e.g. yolo26s at 640 px, ~3× the compute) is roughly 10–18 h on a P100, which is impractical on the laptop.
 - Shared GPUs mean a queue wait (check with `squeue -p gpu`). If reading images from the home folder is slow, try `--set cache=ram`.
@@ -223,8 +233,9 @@ tail -f slurm/logs/<job>.out                            # live log
 | Cluster software install | ✅ Done | torch 2.5.1, every package, no conflicts |
 | Cluster setup (`setup_env.sh`) | ✅ Done 2026-11-25 | `data/` → `$HOME/pneumonia-data`, base weights downloaded. Fixed: SSL certificate errors (scripts now set `SSL_CERT_FILE`). |
 | Cluster accounts + data | ✅ Done | `wandb login`, `.env` copied via `scp`, data job finished: `data/` → `~/pneumonia-data` holds `raw/` and `yolo/`. Earlier failed attempts (Windows line endings in `.env`, kaggle's missing `six`) are fixed. |
-| Cluster smoke run | ⏳ Next | `sbatch slurm/train.sbatch configs/smoke.yaml --no-wandb`. 1st try (2026-11-26) failed: OpenCV's GUI build won't load on the P100 node. Fixed by switching to `opencv-python-headless`. |
-| Baseline training + val evaluation | ⏳ | The first trustworthy numbers |
+| Cluster smoke run | ✅ Done 2026-11-26 | Full train + val on a P100 works end to end. Training: 3.2 batches/s (≈3× the laptop). Val pass: 19 s (laptop ~40 s). Inference: 2.3 ms/img (laptop 3.4 ms). 8 workers, AMP on. An earlier attempt failed on OpenCV's GUI build; fixed with `opencv-python-headless`. |
+| Baseline training | ✅ Done 2026-11-26 | `baseline_n640`: yolo26n, 640 px, 30 epochs, batch 16, 1 P100, 3.28 h. Ran all 30 epochs (no early stop). Chosen as a fast, cheap reference for later experiments. **Val (best.pt): mAP50 0.383, mAP50-95 0.150, P 0.442, R 0.415.** Trend: mAP50 0.09 → 0.31 by epoch 7, a slow climb to ~0.35, a jump at ~epoch 22 (mosaic off for the last 10 epochs), then flat at ~0.38. Val box loss flat (~1.90) since epoch 10, so it's plateauing, not overfitting. Train box loss is also barely falling (1.86 → 1.80), which suggests the nano model is capacity-limited. Bigger model or resolution are likely better levers than more epochs. |
+| Baseline evaluation (`evaluate.py`, val) | ⏳ Next | Image-level AUC, sensitivity/specificity, AP vs PA. Run via `srun` on a P100 (see CLAUDE.md). |
 | Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14; no reply as of 2026-11-25. Proceeding with the home folder + P100s. |
 
 > On the cluster, `data` inside the repo is a **symlink** to `~/pneumonia-data`: the same files, not a copy.
@@ -235,7 +246,7 @@ tail -f slurm/logs/<job>.out                            # live log
 In order, one step at a time:
 
 1. **Cluster data setup**, then the **smoke run** on the cluster.
-2. **Choose the baseline config.** Currently `yolo26n` at 640 px (sized for the laptop). The 12 GB P100 makes `yolo26s` at 640–768 px an option.
+2. ~~**Choose the baseline config.**~~ Decided: `yolo26n` at 640 px (fast reference). `yolo26s` at 640–768 px is the first bigger-model experiment.
 3. **Train the baseline and evaluate it on val:** the first numbers we can trust.
 4. **Experiments, one change at a time, compared on val:**
    - Class imbalance: natural mix vs. oversampled pneumonia vs. fewer healthy images

@@ -49,6 +49,8 @@ python src/evaluate.py runs/detect/<name> --split test --confirm-test   # final,
 DATA_DIR=$HOME/pneumonia-data bash slurm/setup_env.sh   # once, on the login node: py3.11 venv, torch 2.5.1+cu124, data/ symlink, base weights
 sbatch slurm/prepare_data.sbatch                        # CPU job: Kaggle download + unzip + prepare_data.py
 sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submitting resumes if last.pt exists
+srun -p gpu --gres=gpu:p100:1 --cpus-per-task=4 --mem=16G --time=00:30:00 bash -c \
+  'module load python/3.11.5 && source .venv/bin/activate && export SSL_CERT_FILE="$(python -m certifi)" && python src/evaluate.py runs/detect/<name>'   # evaluate on a P100
 ```
 
 - The cluster runs CentOS 7 (glibc 2.17), which caps torch at 2.5.1. The laptop uses torch 2.10, and Ultralytics is pinned to the same version on both.
@@ -60,6 +62,8 @@ sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submittin
 - A `.env` copied from Windows has CRLF line endings. Sourcing it in bash fails (`$'\r': command not found`, shown as just `: command not found`) and leaves `\r` on the values. `prepare_data.sbatch` loads it through `tr -d '\r'`. Do the same anywhere else `.env` is sourced, or fix the file once with `sed -i 's/\r$//' .env`.
 - On the P100 node, the regular `opencv-python` wheel fails to import (`libxcb-shm...: undefined symbol: xcb_send_request_with_fds`). Its bundled X11 libs clash with the node's system libs. `setup_env.sh` swaps it for `opencv-python-headless` (same `cv2`, same version), after which `pip check` reports opencv-python missing; that's expected. CPU nodes don't have this problem.
 - The `kaggle` package (2.0.0 and 2.2.5) imports `six` without declaring it. Both requirements files list `six` explicitly. Without it: `ModuleNotFoundError: No module named 'six'`.
+- `srun` blocks the terminal until a GPU frees up, and dies if the terminal closes. When both P100s are busy (`squeue -p gpu`), prefer an `sbatch` job, or evaluate on the laptop. The laptop has the identical split and data, so `scp` the run directory down (best.pt is ~5 MB) and run `evaluate.py` there.
+- At the end of training, W&B logs "Tried to log to step 30 that is less than the current step 31". This is harmless: an Ultralytics quirk where the final validation is logged out of order.
 - `sacct` may fail with "Connection refused" (the cluster's accounting DB is down). Read the job log in `slurm/logs/` instead.
 - `requirements-cluster.lock.txt` is generated on the cluster by `setup_env.sh` and **should** be committed from there.
 - Compute nodes have internet, so W&B logs online.
