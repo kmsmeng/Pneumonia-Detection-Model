@@ -20,6 +20,7 @@ tqdm==4.67.3
 
 # Dataset download
 kaggle==2.0.0
+six==1.17.0              # kaggle imports it but forgets to declare it
 python-dotenv==1.2.1
 
 # Plotting / analysis

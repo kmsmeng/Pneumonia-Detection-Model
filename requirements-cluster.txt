@@ -18,3 +18,4 @@ scikit-learn
 tqdm
 
 kaggle
+six                      # kaggle imports it but forgets to declare it (ModuleNotFoundError: six)

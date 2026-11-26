@@ -222,7 +222,7 @@ tail -f slurm/logs/<job>.out                            # live log
 | Cluster job scripts | ✅ Written | `slurm/` |
 | Cluster software install | ✅ Done | torch 2.5.1, every package, no conflicts |
 | Cluster setup (`setup_env.sh`) | ✅ Done 2026-11-25 | `data/` → `$HOME/pneumonia-data`, base weights downloaded. Fixed: SSL certificate errors (scripts now set `SSL_CERT_FILE`). |
-| Cluster accounts + data | ⏳ In progress | ✅ `wandb login` · ✅ `.env` copied via `scp` (2026-11-25) · `sbatch slurm/prepare_data.sbatch` |
+| Cluster accounts + data | ⏳ In progress | ✅ `wandb login` · ✅ `.env` copied via `scp` (2026-11-25) · `sbatch slurm/prepare_data.sbatch`: 1st try failed on Windows line endings in `.env`, 2nd on kaggle's missing `six` dependency. Both fixed. |
 | Cluster smoke run | ⏳ | Checks that torch 2.5.1 + YOLO26 + P100 + paths work together |
 | Baseline training + val evaluation | ⏳ | The first trustworthy numbers |
 | Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14; no reply as of 2026-11-25. Proceeding with the home folder + P100s. |
