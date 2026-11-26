@@ -46,7 +46,7 @@ python src/evaluate.py runs/detect/<name> --split test --confirm-test   # final,
 ### Cluster (Magnolia HPC, SLURM): see `Magnolia_HPC.md`
 
 ```
-bash slurm/setup_env.sh                                 # once, on the login node: py3.11 venv, torch 2.5.1+cu124, data/ -> /scratch symlink, base weights
+DATA_DIR=$HOME/pneumonia-data bash slurm/setup_env.sh   # once, on the login node: py3.11 venv, torch 2.5.1+cu124, data/ symlink, base weights
 sbatch slurm/prepare_data.sbatch                        # CPU job: Kaggle download + unzip + prepare_data.py
 sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submitting resumes if last.pt exists
 ```
@@ -54,6 +54,8 @@ sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submittin
 - The cluster runs CentOS 7 (glibc 2.17), which caps torch at 2.5.1. The laptop uses torch 2.10, and Ultralytics is pinned to the same version on both.
 - The cluster installs from `requirements-cluster.txt` with `--only-binary=:all:`. Many of the laptop's exact pins (numpy 2.3+, pandas 3) have no glibc-2.17 wheels, and building from source fails. The resolved versions are frozen into `requirements-cluster.lock.txt`. Keep `ultralytics` and `albumentationsx` pinned identically in both requirements files.
 - Always request `--gres=gpu:p100:1`. The K80 node is unusable.
+- The cluster's Python (`module python/3.11.5`) can't find the system CA certificates, so urllib HTTPS fails with `CERTIFICATE_VERIFY_FAILED`. Every slurm script exports `SSL_CERT_FILE="$(python -m certifi)"` after activating the venv. Keep that line in any new cluster script.
+- Data on the cluster currently lives in `$HOME/pneumonia-data` (`data/` symlink), because there's no scratch directory yet.
 - Compute nodes have internet, so W&B logs online.
 - Submit from the repo root. Logs go to `slurm/logs/`.
 

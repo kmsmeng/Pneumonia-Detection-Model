@@ -17,6 +17,7 @@ cd "$SLURM_SUBMIT_DIR"
 module purge
 module load python/3.11.5
 source .venv/bin/activate
+export SSL_CERT_FILE="$(python -m certifi)"   # cluster Python cannot find system CA certs; use certifi's bundle
 
 ZIP=data/rsna-pneumonia-detection-challenge.zip
 if [ ! -d data/raw/stage_2_train_images ]; then

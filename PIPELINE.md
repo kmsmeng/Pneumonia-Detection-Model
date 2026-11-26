@@ -221,7 +221,8 @@ tail -f slurm/logs/<job>.out                            # live log
 | Train / eval scripts | ✅ Done | Tested end to end on the laptop (smoke run) |
 | Cluster job scripts | ✅ Written | `slurm/` |
 | Cluster software install | ✅ Done | torch 2.5.1, every package, no conflicts |
-| Cluster data setup | ⏳ Next | `DATA_DIR=$HOME/pneumonia-data bash slurm/setup_env.sh`, `wandb login`, copy `.env`, `sbatch slurm/prepare_data.sbatch` |
+| Cluster setup (`setup_env.sh`) | ✅ Done 2026-11-25 | `data/` → `$HOME/pneumonia-data`, base weights downloaded. Fixed: SSL certificate errors (scripts now set `SSL_CERT_FILE`). |
+| Cluster accounts + data | ⏳ Next | `wandb login`, copy `.env`, `sbatch slurm/prepare_data.sbatch` |
 | Cluster smoke run | ⏳ | Checks that torch 2.5.1 + YOLO26 + P100 + paths work together |
 | Baseline training + val evaluation | ⏳ | The first trustworthy numbers |
 | Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14; no reply as of 2026-11-25. Proceeding with the home folder + P100s. |

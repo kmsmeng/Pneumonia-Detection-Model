@@ -25,6 +25,7 @@ shift
 module purge
 module load python/3.11.5
 source .venv/bin/activate
+export SSL_CERT_FILE="$(python -m certifi)"   # cluster Python cannot find system CA certs; use certifi's bundle
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
 
 NAME=$(python -c "import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))['name'])" "$CONFIG")

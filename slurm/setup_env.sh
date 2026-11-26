@@ -31,6 +31,10 @@ pip check
 pip freeze > requirements-cluster.lock.txt   # exact versions on the cluster; commit this file
 echo "Wrote requirements-cluster.lock.txt"
 
+# The cluster's Python can't find the system CA certificates (HTTPS downloads fail with
+# CERTIFICATE_VERIFY_FAILED), so point it at certifi's bundle (installed above, via requests).
+export SSL_CERT_FILE="$(python -m certifi)"
+
 # Data on scratch, linked into the repo so the scripts' data/ paths keep working.
 mkdir -p "$DATA_DIR"
 if [ -e data ] && [ ! -L data ]; then
