@@ -1,5 +1,6 @@
-# Data (Kaggle download + generated YOLO dataset)
-data/
+# Data (Kaggle download + generated YOLO dataset).
+# No trailing slash: on the cluster, data is a symlink (a file), which "data/" would not match.
+/data
 .kaggle/
 
 # Secrets

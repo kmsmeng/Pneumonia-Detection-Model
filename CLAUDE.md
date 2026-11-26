@@ -56,6 +56,8 @@ sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submittin
 - Always request `--gres=gpu:p100:1`. The K80 node is unusable.
 - The cluster's Python (`module python/3.11.5`) can't find the system CA certificates, so urllib HTTPS fails with `CERTIFICATE_VERIFY_FAILED`. Every slurm script exports `SSL_CERT_FILE="$(python -m certifi)"` after activating the venv. Keep that line in any new cluster script.
 - Data on the cluster currently lives in `$HOME/pneumonia-data` (`data/` symlink), because there's no scratch directory yet.
+- `.gitignore` uses `/data` (no trailing slash) on purpose. On the cluster `data` is a symlink, i.e. a file, and `data/` only matches directories.
+- `requirements-cluster.lock.txt` is generated on the cluster by `setup_env.sh` and **should** be committed from there.
 - Compute nodes have internet, so W&B logs online.
 - Submit from the repo root. Logs go to `slurm/logs/`.
 - In an interactive login shell, activate first: `module load python/3.11.5 && source .venv/bin/activate`. Otherwise `wandb`, `yolo` and the project's `python` aren't on PATH. Job scripts do this themselves.
