@@ -22,7 +22,8 @@ export SSL_CERT_FILE="$(python -m certifi)"   # cluster Python cannot find syste
 ZIP=data/rsna-pneumonia-detection-challenge.zip
 if [ ! -d data/raw/stage_2_train_images ]; then
     if [ ! -f "$ZIP" ]; then
-        set -a; [ -f .env ] && source .env; set +a   # KAGGLE_USERNAME / KAGGLE_KEY
+        # KAGGLE_USERNAME / KAGGLE_KEY. tr strips Windows line endings (\r) in case .env came from a laptop.
+        if [ -f .env ]; then set -a; source <(tr -d '\r' < .env); set +a; fi
         kaggle competitions download -c rsna-pneumonia-detection-challenge -p data/
     fi
     echo "Unzipping $ZIP ..."

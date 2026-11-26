@@ -57,6 +57,8 @@ sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submittin
 - The cluster's Python (`module python/3.11.5`) can't find the system CA certificates, so urllib HTTPS fails with `CERTIFICATE_VERIFY_FAILED`. Every slurm script exports `SSL_CERT_FILE="$(python -m certifi)"` after activating the venv. Keep that line in any new cluster script.
 - Data on the cluster currently lives in `$HOME/pneumonia-data` (`data/` symlink), because there's no scratch directory yet.
 - `.gitignore` uses `/data` (no trailing slash) on purpose. On the cluster `data` is a symlink, i.e. a file, and `data/` only matches directories.
+- A `.env` copied from Windows has CRLF line endings. Sourcing it in bash fails (`$'\r': command not found`, shown as just `: command not found`) and leaves `\r` on the values. `prepare_data.sbatch` loads it through `tr -d '\r'`. Do the same anywhere else `.env` is sourced, or fix the file once with `sed -i 's/\r$//' .env`.
+- `sacct` may fail with "Connection refused" (the cluster's accounting DB is down). Read the job log in `slurm/logs/` instead.
 - `requirements-cluster.lock.txt` is generated on the cluster by `setup_env.sh` and **should** be committed from there.
 - Compute nodes have internet, so W&B logs online.
 - Submit from the repo root. Logs go to `slurm/logs/`.
