@@ -58,6 +58,7 @@ sbatch slurm/train.sbatch configs/<x>.yaml [--set k=v]  # P100 job; re-submittin
 - Data on the cluster currently lives in `$HOME/pneumonia-data` (`data/` symlink), because there's no scratch directory yet.
 - `.gitignore` uses `/data` (no trailing slash) on purpose. On the cluster `data` is a symlink, i.e. a file, and `data/` only matches directories.
 - A `.env` copied from Windows has CRLF line endings. Sourcing it in bash fails (`$'\r': command not found`, shown as just `: command not found`) and leaves `\r` on the values. `prepare_data.sbatch` loads it through `tr -d '\r'`. Do the same anywhere else `.env` is sourced, or fix the file once with `sed -i 's/\r$//' .env`.
+- On the P100 node, the regular `opencv-python` wheel fails to import (`libxcb-shm...: undefined symbol: xcb_send_request_with_fds`). Its bundled X11 libs clash with the node's system libs. `setup_env.sh` swaps it for `opencv-python-headless` (same `cv2`, same version), after which `pip check` reports opencv-python missing; that's expected. CPU nodes don't have this problem.
 - The `kaggle` package (2.0.0 and 2.2.5) imports `six` without declaring it. Both requirements files list `six` explicitly. Without it: `ModuleNotFoundError: No module named 'six'`.
 - `sacct` may fail with "Connection refused" (the cluster's accounting DB is down). Read the job log in `slurm/logs/` instead.
 - `requirements-cluster.lock.txt` is generated on the cluster by `setup_env.sh` and **should** be committed from there.

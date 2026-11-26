@@ -28,6 +28,15 @@ pip install --only-binary=:all: \
     --extra-index-url https://pypi.org/simple \
     torch==2.5.1 torchvision==0.20.1 -r requirements-cluster.txt
 pip check
+
+# Swap OpenCV for the headless build. The regular opencv-python wheel bundles libxcb, which clashes
+# with the GPU node's system libs: "libxcb-shm...: undefined symbol: xcb_send_request_with_fds".
+# Ultralytics declares opencv-python, so pip always installs it; we replace it afterwards. Both
+# provide the same `cv2` module. (After this, `pip check` reports opencv-python missing; expected.)
+pip uninstall -y opencv-python
+pip install --only-binary=:all: --no-deps "opencv-python-headless<5"
+python -c "import cv2; print('cv2', cv2.__version__, '(headless)')"
+
 pip freeze > requirements-cluster.lock.txt   # exact versions on the cluster; commit this file
 echo "Wrote requirements-cluster.lock.txt"
 

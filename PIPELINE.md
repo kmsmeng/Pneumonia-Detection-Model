@@ -222,10 +222,13 @@ tail -f slurm/logs/<job>.out                            # live log
 | Cluster job scripts | ✅ Written | `slurm/` |
 | Cluster software install | ✅ Done | torch 2.5.1, every package, no conflicts |
 | Cluster setup (`setup_env.sh`) | ✅ Done 2026-11-25 | `data/` → `$HOME/pneumonia-data`, base weights downloaded. Fixed: SSL certificate errors (scripts now set `SSL_CERT_FILE`). |
-| Cluster accounts + data | ⏳ In progress | ✅ `wandb login` · ✅ `.env` copied via `scp` (2026-11-25) · `sbatch slurm/prepare_data.sbatch`: 1st try failed on Windows line endings in `.env`, 2nd on kaggle's missing `six` dependency. Both fixed. |
-| Cluster smoke run | ⏳ | Checks that torch 2.5.1 + YOLO26 + P100 + paths work together |
+| Cluster accounts + data | ✅ Done | `wandb login`, `.env` copied via `scp`, data job finished: `data/` → `~/pneumonia-data` holds `raw/` and `yolo/`. Earlier failed attempts (Windows line endings in `.env`, kaggle's missing `six`) are fixed. |
+| Cluster smoke run | ⏳ Next | `sbatch slurm/train.sbatch configs/smoke.yaml --no-wandb`. 1st try (2026-11-26) failed: OpenCV's GUI build won't load on the P100 node. Fixed by switching to `opencv-python-headless`. |
 | Baseline training + val evaluation | ⏳ | The first trustworthy numbers |
 | Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14; no reply as of 2026-11-25. Proceeding with the home folder + P100s. |
+
+> On the cluster, `data` inside the repo is a **symlink** to `~/pneumonia-data`: the same files, not a copy.
+> Never delete `~/pneumonia-data` thinking it's a duplicate.
 
 ## What's next
 

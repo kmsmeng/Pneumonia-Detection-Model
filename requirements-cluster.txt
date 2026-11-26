@@ -11,7 +11,7 @@ wandb
 pydicom
 numpy
 pandas
-opencv-python<5          # 5.x is a new major version; laptop runs 4.13
+opencv-python<5          # 5.x is a new major version; setup_env.sh then swaps in opencv-python-headless (GUI build breaks on the GPU node)
 pillow
 PyYAML
 scikit-learn
