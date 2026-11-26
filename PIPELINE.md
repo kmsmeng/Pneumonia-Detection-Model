@@ -5,7 +5,7 @@ How the project works end to end: what each step does, why it's done that way, a
 - Cluster environment details: [`Magnolia_HPC.md`](Magnolia_HPC.md)
 - Original critique and phased plan: [`PROJECT_REVIEW.md`](PROJECT_REVIEW.md)
 
-*Last updated: 2026-11-14*
+*Last updated: 2026-11-25*
 
 ---
 
@@ -170,6 +170,18 @@ Results are saved to `runs/detect/<name>/eval_<split>.json` and added to the run
 
 `ultralytics` and `albumentationsx` are pinned to the **same version** on both, so training behaves identically. A model trained on the cluster loads fine on the laptop.
 
+### Expected training time (baseline: yolo26n, 640 px, 30 epochs)
+
+| | Per epoch | 30 epochs | Basis |
+|---|---|---|---|
+| Laptop (RTX 3050, 2 workers) | ~20 min | ~10 h | Measured: ~1 s per batch of 16 in the smoke run and earlier runs |
+| Cluster (1× P100, 8 workers) | ~6–12 min | ~3–6 h | **Estimate**; replace with the measured `s/it` from the cluster smoke run |
+
+- The laptop is likely bottlenecked on data loading (only 2 workers fit in RAM), not on the GPU. The cluster's 8 workers keep the GPU busy. GPU vs. GPU, a P100 and an RTX 3050 Laptop are roughly comparable.
+- The cluster's real advantages are 12 GB VRAM (bigger models and images), **two P100s for parallel experiments**, long uninterrupted runs, and a free laptop.
+- A bigger config (e.g. yolo26s at 640 px, ~3× the compute) is roughly 10–18 h on a P100, which is impractical on the laptop.
+- Shared GPUs mean a queue wait (check with `squeue -p gpu`). If reading images from the home folder is slow, try `--set cache=ram`.
+
 ### Cluster scripts (`slurm/`)
 
 | Script | Where | What it does |
@@ -212,7 +224,7 @@ tail -f slurm/logs/<job>.out                            # live log
 | Cluster data setup | ⏳ Next | `DATA_DIR=$HOME/pneumonia-data bash slurm/setup_env.sh`, `wandb login`, copy `.env`, `sbatch slurm/prepare_data.sbatch` |
 | Cluster smoke run | ⏳ | Checks that torch 2.5.1 + YOLO26 + P100 + paths work together |
 | Baseline training + val evaluation | ⏳ | The first trustworthy numbers |
-| Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14 |
+| Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14; no reply as of 2026-11-25. Proceeding with the home folder + P100s. |
 
 ## What's next
 

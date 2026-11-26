@@ -407,6 +407,14 @@ Disk quotas: none
 8. **Default job time is 5 h**, so job scripts set `--time` explicitly.
 9. **Expectations:** a P100 is roughly comparable to the laptop's RTX 3050 per step (no tensor cores). The wins are 12 GB VRAM, 20 CPU cores per node for data loading, ~128 GB RAM, and two GPUs for parallel runs.
 
+## Requests to the admin
+
+| Date | Request | Status |
+|---|---|---|
+| 2026-11-14 | Personal scratch directory (`/scratch/users/<username>`), scratch purge policy, A100 (`suliaoma`) access | No reply as of 2026-11-25. Meanwhile: data in `$HOME/pneumonia-data`, training on the `gpu` partition P100s. |
+
+Note: you can't create your own folder under `/scratch` (it's root-owned; `/scratch/users/` folders are admin-created), and `/scratch/jobs/` is SLURM's temporary per-job space.
+
 ## Still to check (nice to have, not blocking)
 
 | # | What | Command |
