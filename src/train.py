@@ -8,6 +8,9 @@ straight to `model.train()`, logged to W&B as-is, and copied into the run direct
 
 `--set key=value` overrides a key under `train:` (values parsed as YAML, so 8 -> int, true -> bool).
 The merged result is what gets saved to the run's config.yaml and logged, so the record always matches the run.
+
+Optional top-level config key `oversample_positives: N` lists every pneumonia training image N times
+(written to <run>/train_list.txt + <run>/data.yaml). Validation and test data are never changed.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from pathlib import Path
 
 import yaml
 
-from common import RUNS_DIR, git_commit, load_config, resolve, splits_fingerprint
+from common import RUNS_DIR, git_commit, load_config, load_split, resolve, splits_fingerprint
 
 
 def parse_overrides(items: list[str]) -> dict:
@@ -35,6 +38,35 @@ def parse_overrides(items: list[str]) -> dict:
                 pass
         overrides[key.strip()] = parsed
     return overrides
+
+
+def training_data(cfg: dict, run_dir: Path) -> Path:
+    """The data.yaml to train on. With `oversample_positives: N` (top-level config key, N > 1), every
+    pneumonia image appears N times in the training list (healthy images once), so the model sees
+    positives more often. Val/test are untouched: evaluate.py always uses the original data.yaml."""
+    data_yaml = resolve(cfg["data"])
+    factor = cfg.get("oversample_positives", 1)
+    if factor == 1:
+        return data_yaml
+    if not isinstance(factor, int) or factor < 1:
+        raise SystemExit(f"oversample_positives must be a whole number >= 1, got {factor!r}")
+
+    image_dir = data_yaml.parent / "images" / "train"
+    df = load_split("train")
+    lines = []
+    for pid, target in zip(df.patientId, df.Target):
+        lines += [str(image_dir / f"{pid}.png")] * (factor if target else 1)
+    list_file = run_dir / "train_list.txt"
+    list_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    data = yaml.safe_load(data_yaml.read_text(encoding="utf-8"))
+    data.update(path=str(data_yaml.parent), train=str(list_file))  # val/test stay relative to the dataset
+    out = run_dir / "data.yaml"
+    out.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    n_pos = int(df.Target.sum()) * factor
+    print(f"Oversampling positives x{factor}: {len(lines)} training entries, "
+          f"{n_pos / len(lines):.1%} pneumonia (was {df.Target.mean():.1%})")
+    return out
 
 
 def init_wandb(cfg: dict, run_dir: Path, resume_id: str | None = None):
@@ -96,12 +128,13 @@ def main() -> None:
         encoding="utf-8",
     )
 
+    data_yaml = training_data(cfg, run_dir)
     if not args.no_wandb:
         init_wandb(cfg, run_dir)
 
     model = YOLO(resolve(cfg["model"]))
     model.train(
-        data=str(resolve(cfg["data"])),
+        data=str(data_yaml),
         project=str(RUNS_DIR),  # absolute, so Ultralytics doesn't nest it under its global runs_dir
         name=cfg["name"],
         exist_ok=True,          # we created run_dir ourselves above

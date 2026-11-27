@@ -241,7 +241,8 @@ tail -f slurm/logs/<job>.out                            # live log
 | Baseline evaluation (`evaluate.py`, val) | ✅ Done 2026-11-26 | See [Results](#results). Consistency checks passed (TP+FN = 1424 GT boxes, no warnings). Test set untouched. |
 | Threshold analysis in `evaluate.py` | ✅ Done 2026-11-26 | Operating points (90%/80% sensitivity, best F1; overall + per view) chosen on val, applied unchanged on test; per-image scores CSV. Baseline re-evaluated on the cluster: best-F1 threshold 0.053 gives sens 0.81 / spec 0.82 (vs 0.37 / 0.98 at 0.25). See [Results](#results). |
 | yolo26s experiment (`s640`) | ✅ Done 2026-11-27 | `configs/s640.yaml`: baseline with only the model changed (yolo26s). 2.2 batches/s, 5.6 GB GPU memory, ~4.7 h. Speed: only ~1.45× slower than nano (3.2 batches/s), so nano was likely limited by data loading rather than the GPU. **Val: mAP50 0.391 vs 0.383, image AUC 0.902 vs 0.901, best F1 0.670 vs 0.670: no real gain.** Run + eval copied to the laptop. |
-| Full-resolution experiment (`n1024`) | ⏳ Config ready 2026-11-27 | `configs/n1024.yaml`: baseline with only `imgsz` 640 → 1024. Expected ~5–6 h and ~7 GB GPU memory on a P100. |
+| Full-resolution experiment (`n1024`) | ✅ Done 2026-11-27 | `configs/n1024.yaml`: baseline with only `imgsz` 640 → 1024. 7.0 h on a P100 (~14 min/epoch; my 5–6 h estimate was low). **Val: mAP50 0.338 (worse than 0.383); image AUC 0.900 and best F1 0.672 (same).** Resolution is not the lever. |
+| Class-balance experiment (`n640_os2`) | ⏳ Config ready 2026-11-27 | `configs/n640_os2.yaml`: baseline + `oversample_positives: 2` (train.py lists each pneumonia training image twice: 22.5% → 36.8% positives, 22,886 entries/epoch). Val/test unchanged. Verified on the laptop that Ultralytics loads the list correctly. Expected ~4 h (epochs are 23% longer). |
 | Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14; no reply as of 2026-11-25. Proceeding with the home folder + P100s. |
 
 > On the cluster, `data` inside the repo is a **symlink** to `~/pneumonia-data`: the same files, not a copy.
@@ -320,6 +321,27 @@ Training-curve comparison:
 - Early training was noisier (mAP50 bounced 0.13–0.30 in epochs 1–11), and epoch 5 logged a `NaN` val loss (mAP was still computed). It recovered on its own, likely a one-off fp16 overflow in the val loss; harmless here, but worth watching in future runs.
 - The image-level evaluation confirms it: same AUC (0.902 vs 0.901), same best F1 (0.670).
 
+### `n1024`: yolo26n, 1024 px (full resolution), 30 epochs (2026-11-27)
+
+| Metric (val, best.pt) | baseline_n640 | s640 | n1024 |
+|---|---|---|---|
+| Box mAP50 / mAP50-95 | 0.383 / 0.150 | **0.391** / 0.153 | 0.338 / 0.137 |
+| Box precision / recall | 0.438 / 0.416 | 0.439 / 0.421 | 0.361 / 0.405 |
+| Box confusion @ 0.25 (TP / FP / FN) | 384 / 230 / 1040 | 377 / 188 / 1047 | 273 / 200 / 1151 |
+| Image ROC-AUC / PR-AUC | 0.901 / 0.728 | 0.902 / 0.734 | 0.900 / 0.729 |
+| AP AUC · PA AUC | 0.849 · 0.903 | 0.852 · 0.906 | 0.849 · 0.901 |
+| Best F1 (sens / spec) | 0.670 (0.81 / 0.82) | 0.670 (0.77 / 0.85) | 0.672 (0.76 / 0.86) |
+| 90% sens → specificity (FP) | 0.730 (836) | 0.736 (820) | 0.736 (819) |
+| Training time (1× P100) | 3.3 h | 4.7 h | 7.0 h |
+
+**Takeaways**
+
+- **Full resolution made box detection worse** (mAP50 0.383 → 0.338) and left image-level performance unchanged (AUC 0.900, best F1 0.672).
+- **Why resolution doesn't help: the boxes are big.** Median pneumonia box is 217 × 298 px at 1024 (136 × 186 px at 640); even the 5th percentile is ~78 px at 640. There is no small-object problem for extra pixels to solve. At 1024 the boxes become very large (up to ~940 px tall), and the nano model's largest detection scale and receptive field have a harder time covering them.
+- It also learned more slowly: mAP50 stayed below 0.07 for the first 3 epochs (vs. 0.16 for s640) and was still climbing at epoch 30 (0.34). More epochs might close some of the gap, but at 2× the cost of 640 for no image-level gain.
+- Box losses vs. confidence: n1024's val box loss is lower (1.83 vs 1.90), but its classification loss is higher (2.18 vs 2.07) and box precision much lower. Boxes it finds are placed fine, but its confidence is worse calibrated.
+- **The big picture across all three runs: image AUC is stuck at ~0.90 and best F1 at ~0.67**, whatever we change about model size or resolution. That points to a ceiling set by the data and labels (RSNA readers often disagreed), not by the model. Gains, if any, must come from a different lever (data balance, training recipe) or are simply not available.
+
 ## What's next
 
 In order, one step at a time:
@@ -329,10 +351,9 @@ In order, one step at a time:
 3. ~~**Train the baseline and evaluate it on val.**~~ Done; see [Results](#results).
 4. ~~**Threshold analysis.**~~ Done; see [Results](#results).
    ~~**yolo26s 640 px**~~ Done: no real gain over nano (mAP50 0.391 vs 0.383; AUC and best F1 identical). Model size is not the lever at 640 px.
-   **Now: `n1024`** (decided 2026-11-27): nano at 1024 px (full resolution), 30 epochs, otherwise identical to the baseline, so it tests resolution alone. Plan after it, one change per run:
-   - If 1024 helps → `s1024` (batch 8, since s at 1024 likely won't fit 12 GB at batch 16): does model size pay off at full resolution?
-   - If not → resolution isn't the lever; move on to class balance.
-   - Longer training (more epochs) goes last, on the winning config.
+   ~~**`n1024`**~~ Done: worse box mAP (0.338), same image AUC. Resolution isn't the lever, so `s1024` is dropped.
+   **Now: `n640_os2`** (decided 2026-11-27): class balance, pneumonia images oversampled ×2. If it doesn't break the ~0.90 AUC / 0.67 F1 ceiling, `baseline_n640` becomes the final model.
+   **Then:** the deliverables: RSNA competition metric, ONNX export, results charts, website. (A 512 px run stays optional.)
 5. **Experiments, one change at a time, compared on val:**
    - Class imbalance: natural mix vs. oversampled pneumonia vs. fewer healthy images
    - Image size: 512 / 640 / 768 / 1024
