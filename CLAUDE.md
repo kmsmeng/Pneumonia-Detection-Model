@@ -16,7 +16,8 @@ After finishing any piece of work, update the relevant docs as part of the same 
 |---|---|---|
 | `PIPELINE.md` | How each pipeline step works and why; the **status table** and **What's next** | Any step completes, a decision is made, the pipeline or a config changes, results come in |
 | `CLAUDE.md` | Commands, layout, environment, gotchas | Commands, scripts, layout or environment change; a new gotcha turns up |
-| `Magnolia_HPC.md` | Cluster facts, survey output, implications | New cluster info (access, scratch, GPUs, admin replies) |
+| `MAGNOLIA_CLUSTER_GUIDE.md` | Project-independent cluster guide: commands, job templates, env recipe, errors and fixes, measured speeds | Any new cluster fact, command, error/fix or timing (keep it project-independent) |
+| `Magnolia_HPC.md` | Raw archive: recovered wiki + original survey outputs | New raw survey output or admin replies |
 | `PROJECT_REVIEW.md` | The original critique and phased plan (historical) | Only to add a dated status note; don't rewrite the critique |
 | `README.md` | Public summary, setup, results | Setup steps change; final results and demo are ready |
 | `NOTES.md` | User's research notes (verbatim) | Only if the user asks |
@@ -45,7 +46,7 @@ python src/evaluate.py runs/detect/<name> --split test --confirm-test   # final,
 - `evaluate.py` writes `eval_<split>.json` and `eval_<split>_scores.csv` (per-image max-box score). Operating thresholds (90%/80% sensitivity, best F1; overall and per view) are **chosen on val only**. The test evaluation reuses them from `eval_val.json` and never re-picks them.
 - The split is 70/15/15 (18678/4003/4003 images, 22.5% positive), stratified on Target + view, seed 42. Never regenerate it with `--force` unless you are intentionally invalidating every trained model.
 
-### Cluster (Magnolia HPC, SLURM): see `Magnolia_HPC.md`
+### Cluster (Magnolia HPC, SLURM): see `MAGNOLIA_CLUSTER_GUIDE.md` (raw survey in `Magnolia_HPC.md`)
 
 ```
 DATA_DIR=$HOME/pneumonia-data bash slurm/setup_env.sh   # once, on the login node: py3.11 venv, torch 2.5.1+cu124, data/ symlink, base weights

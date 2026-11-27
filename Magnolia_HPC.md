@@ -1,5 +1,9 @@
 # Magnolia HPC Cluster (USM): Reference Notes
 
+> **For day-to-day use, read [`MAGNOLIA_CLUSTER_GUIDE.md`](MAGNOLIA_CLUSTER_GUIDE.md)**: the distilled,
+> project-independent guide (commands, templates, every error we hit and its fix, measured speeds). This file
+> is the raw archive: the recovered wiki pages and the original survey outputs.
+
 > Recovered from the old USM HPC wiki via the Wayback Machine (the live site is currently down).
 > The content is from the archived pages, so some of it may be out of date. In particular, see the
 > **May 28, 2024 hardware/software update**, which isn't captured here yet.
