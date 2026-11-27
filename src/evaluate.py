@@ -5,7 +5,11 @@
     python src/evaluate.py runs/detect/baseline_n640 --split test --confirm-test
 
 Image-level score = highest box confidence in the image (0 if no box). Results are written to
-<run>/eval_<split>.json and, if the run has a wandb_id.txt, added to that W&B run's summary.
+<run>/eval_<split>.json (per-image scores to <run>/eval_<split>_scores.csv) and, if the run has a
+wandb_id.txt, added to that W&B run's summary.
+
+Threshold analysis: on val, it picks operating points (thresholds for 90% / 80% sensitivity and the
+best-F1 threshold), overall and per view. On test, it applies those val-chosen thresholds unchanged.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve
 from tqdm import tqdm
 
 from common import YOLO_DIR, load_config, load_split, resolve, splits_fingerprint
@@ -37,13 +41,32 @@ def threshold_metrics(y: np.ndarray, s: np.ndarray, t: float) -> dict:
     pred = s >= t
     tp, fp = int((pred & (y == 1)).sum()), int((pred & (y == 0)).sum())
     fn, tn = int((~pred & (y == 1)).sum()), int((~pred & (y == 0)).sum())
+    sens, prec = tp / max(tp + fn, 1), tp / max(tp + fp, 1)
     return {
-        "threshold": round(float(t), 4),
-        "sensitivity": tp / max(tp + fn, 1),
+        "threshold": float(t),
+        "sensitivity": sens,
         "specificity": tn / max(tn + fp, 1),
-        "precision": tp / max(tp + fp, 1),
+        "precision": prec,
+        "f1": 2 * prec * sens / max(prec + sens, 1e-12),
         "tp": tp, "fp": fp, "fn": fn, "tn": tn,
     }
+
+
+SENS_TARGETS = (0.90, 0.80)
+
+
+def operating_points(y: np.ndarray, s: np.ndarray) -> dict:
+    """Pick thresholds on THIS data: the highest threshold reaching each target sensitivity
+    (= best specificity for that sensitivity), and the threshold with the best F1."""
+    _, tpr, thr = roc_curve(y, s)  # thresholds descending, tpr ascending
+    points = {}
+    for target in SENS_TARGETS:
+        i = int(np.argmax(tpr >= target))
+        points[f"sens{round(target * 100)}"] = threshold_metrics(y, s, thr[i])
+    prec, rec, thr_pr = precision_recall_curve(y, s)
+    f1 = 2 * prec[:-1] * rec[:-1] / np.maximum(prec[:-1] + rec[:-1], 1e-12)
+    points["best_f1"] = threshold_metrics(y, s, thr_pr[int(np.argmax(f1))])
+    return points
 
 
 def main() -> None:
@@ -73,6 +96,18 @@ def main() -> None:
             raise SystemExit(f"Run was trained on split {trained_on}, but splits/ is now {splits_fingerprint()}. "
                              "Evaluating it on the current split would leak training data.")
 
+    # Thresholds are chosen on val only. On test, the val-chosen thresholds are applied unchanged
+    # (choosing them on test would inflate the final result).
+    val_points = None
+    if args.split == "test":
+        val_file = run_dir / "eval_val.json"
+        val_res = json.loads(val_file.read_text()) if val_file.exists() else {}
+        if val_res.get("weights") != args.weights or "operating_points" not in val_res.get("image", {}):
+            raise SystemExit(f"Run the val evaluation first (with --weights {args.weights}): "
+                             "test uses the thresholds chosen on val.")
+        val_points = {"all": val_res["image"]["operating_points"],
+                      **{v: r["operating_points"] for v, r in val_res["image_by_view"].items()}}
+
     model = YOLO(run_dir / "weights" / args.weights)
 
     # Box-level metrics (Ultralytics). plots=True is required for the confusion matrix to be filled.
@@ -90,15 +125,21 @@ def main() -> None:
     paths = [YOLO_DIR / "images" / args.split / f"{pid}.png" for pid in df.patientId]
     y = df.Target.to_numpy()
     s = image_scores(model, paths, imgsz, args.batch)
+    scores_file = run_dir / f"eval_{args.split}_scores.csv"
+    df[["patientId", "view", "Target"]].assign(score=s).to_csv(scores_file, index=False)
 
-    def summarize(mask) -> dict:
+    def summarize(mask, group: str) -> dict:
         yy, ss = y[mask], s[mask]
+        if val_points is None:
+            points = operating_points(yy, ss)
+        else:
+            points = {k: threshold_metrics(yy, ss, p["threshold"]) for k, p in val_points[group].items()}
         return {"n": int(mask.sum()), "positives": int(yy.sum()),
                 "roc_auc": float(roc_auc_score(yy, ss)), "pr_auc": float(average_precision_score(yy, ss)),
-                **threshold_metrics(yy, ss, args.conf)}
+                **threshold_metrics(yy, ss, args.conf), "operating_points": points}
 
-    image = summarize(np.ones_like(y, dtype=bool))
-    by_view = {v: summarize((df.view == v).to_numpy()) for v in sorted(df.view.unique())}
+    image = summarize(np.ones_like(y, dtype=bool), "all")
+    by_view = {v: summarize((df.view == v).to_numpy(), v) for v in sorted(df.view.unique())}
 
     # Consistency checks: catch evaluation bugs like the old "TP = 0 but mAP50 = 0.25" matrix.
     warnings = []
@@ -109,8 +150,9 @@ def main() -> None:
         warnings.append("mAP50 > 0 but confusion-matrix TP == 0: matrix and metrics disagree")
 
     result = {"run": run_dir.name, "split": args.split, "weights": args.weights, "imgsz": imgsz,
-              "split_fingerprint": splits_fingerprint(), "box": box, "image": image, "image_by_view": by_view,
-              "warnings": warnings}
+              "split_fingerprint": splits_fingerprint(),
+              "thresholds_chosen_on": "val",
+              "box": box, "image": image, "image_by_view": by_view, "warnings": warnings}
     out = run_dir / f"eval_{args.split}.json"
     out.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
@@ -121,9 +163,16 @@ def main() -> None:
           f"sens {image['sensitivity']:.3f}  spec {image['specificity']:.3f}")
     for v, r in by_view.items():
         print(f"      {v}: n={r['n']}  ROC-AUC {r['roc_auc']:.4f}  sens {r['sensitivity']:.3f}  spec {r['specificity']:.3f}")
+
+    print(f"\nOperating points (thresholds chosen on val{', applied unchanged to test' if val_points else ''}):")
+    print(f"  {'group':<5} {'point':<8} {'thresh':>7} {'sens':>6} {'spec':>6} {'prec':>6} {'F1':>6} {'FN':>5} {'FP':>5}")
+    for group, r in {"all": image, **by_view}.items():
+        for name, p in r["operating_points"].items():
+            print(f"  {group:<5} {name:<8} {p['threshold']:>7.4f} {p['sensitivity']:>6.3f} {p['specificity']:>6.3f} "
+                  f"{p['precision']:>6.3f} {p['f1']:>6.3f} {p['fn']:>5} {p['fp']:>5}")
     for w in warnings:
         print(f"WARNING: {w}")
-    print(f"Saved {out}")
+    print(f"Saved {out} and {scores_file.name}")
 
     id_file = run_dir / "wandb_id.txt"
     if not args.no_wandb and id_file.exists():
@@ -131,7 +180,10 @@ def main() -> None:
         run = wandb.init(project=cfg.get("wandb_project", "rsna-pneumonia-detection"), id=id_file.read_text().strip(),
                          resume="must")
         flat = {f"eval/{args.split}/box/{k}": v for k, v in box.items()}
-        flat |= {f"eval/{args.split}/image/{k}": v for k, v in image.items()}
+        flat |= {f"eval/{args.split}/image/{k}": v for k, v in image.items() if k != "operating_points"}
+        for group, r in {"all": image, **by_view}.items():
+            for name, p in r["operating_points"].items():
+                flat |= {f"eval/{args.split}/image/{group}/{name}/{k}": v for k, v in p.items()}
         run.summary.update(flat)
         run.finish()
 

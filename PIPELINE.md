@@ -144,8 +144,11 @@ Run on **val** after every experiment. Run on **test** only once, at the very en
 | **Image** | ROC-AUC, PR-AUC | Overall, how well does it separate pneumonia from healthy X-rays? |
 | **Image** | Sensitivity, specificity at a threshold (default 0.25) | Does it **catch** pneumonia patients? Does it avoid **false alarms** on healthy ones? |
 | **Image, by view** | The same, split into AP and PA | Does it work equally on both X-ray types? |
+| **Image, operating points** | Threshold, sens, spec, precision, F1 at: 90% sensitivity, 80% sensitivity, best F1 (overall, AP, PA) | Which cutoff should we actually use? |
 
 The image-level score is the **highest box confidence in the image** (0 if it found no box). This is the clinically meaningful question: *"does this patient have pneumonia?"*
+
+**Threshold analysis.** A score becomes a yes/no answer through a threshold, and 0.25 (the Ultralytics default) was never chosen for this task. On **val**, `evaluate.py` picks operating points: for each target sensitivity (90%, 80%), the *highest* threshold that reaches it (the best specificity at that sensitivity), plus the threshold with the best F1. It does this overall and separately per view, since PA pneumonia gets lower scores. On **test**, it does **not** pick new thresholds; it applies the val-chosen ones unchanged (and refuses to run until `eval_val.json` exists). Per-image scores are saved to `eval_<split>_scores.csv` (patientId, view, Target, score), so charts and the website's confidence slider can be made without re-running the model.
 
 **Safety checks** (these catch the kinds of bugs that invalidated the old results):
 
@@ -153,7 +156,7 @@ The image-level score is the **highest box confidence in the image** (0 if it fo
 - It warns if the confusion matrix doesn't account for every ground-truth box, or if mAP > 0 while TP = 0 (the old "impossible" matrix).
 - It won't touch the test set without `--confirm-test`.
 
-Results are saved to `runs/detect/<name>/eval_<split>.json` and added to the run's W&B summary.
+Results are saved to `runs/detect/<name>/eval_<split>.json` (+ `eval_<split>_scores.csv`) and added to the run's W&B summary.
 
 > Note: mAP50 is **not** the RSNA competition metric (mean precision over IoU 0.4–0.75 per image, where any
 > prediction on a healthy image scores 0). That metric is planned for later.
@@ -235,23 +238,47 @@ tail -f slurm/logs/<job>.out                            # live log
 | Cluster accounts + data | ✅ Done | `wandb login`, `.env` copied via `scp`, data job finished: `data/` → `~/pneumonia-data` holds `raw/` and `yolo/`. Earlier failed attempts (Windows line endings in `.env`, kaggle's missing `six`) are fixed. |
 | Cluster smoke run | ✅ Done 2026-11-26 | Full train + val on a P100 works end to end. Training: 3.2 batches/s (≈3× the laptop). Val pass: 19 s (laptop ~40 s). Inference: 2.3 ms/img (laptop 3.4 ms). 8 workers, AMP on. An earlier attempt failed on OpenCV's GUI build; fixed with `opencv-python-headless`. |
 | Baseline training | ✅ Done 2026-11-26 | `baseline_n640`: yolo26n, 640 px, 30 epochs, batch 16, 1 P100, 3.28 h. Ran all 30 epochs (no early stop). Chosen as a fast, cheap reference for later experiments. **Val (best.pt): mAP50 0.383, mAP50-95 0.150, P 0.442, R 0.415.** Trend: mAP50 0.09 → 0.31 by epoch 7, a slow climb to ~0.35, a jump at ~epoch 22 (mosaic off for the last 10 epochs), then flat at ~0.38. Val box loss flat (~1.90) since epoch 10, so it's plateauing, not overfitting. Train box loss is also barely falling (1.86 → 1.80), which suggests the nano model is capacity-limited. Bigger model or resolution are likely better levers than more epochs. |
-| Baseline evaluation (`evaluate.py`, val) | ⏳ Next | Image-level AUC, sensitivity/specificity, AP vs PA. Run via `srun` on a P100 (see CLAUDE.md). |
+| Baseline evaluation (`evaluate.py`, val) | ✅ Done 2026-11-26 | See [Results](#results). Consistency checks passed (TP+FN = 1424 GT boxes, no warnings). Test set untouched. |
+| Threshold analysis in `evaluate.py` | ✅ Code done 2026-11-26 | Operating points (90%/80% sensitivity, best F1; overall + per view) chosen on val, applied unchanged on test; per-image scores CSV. Logic checked on synthetic data. **Next:** re-run the baseline val evaluation to get its numbers. |
 | Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14; no reply as of 2026-11-25. Proceeding with the home folder + P100s. |
 
 > On the cluster, `data` inside the repo is a **symlink** to `~/pneumonia-data`: the same files, not a copy.
 > Never delete `~/pneumonia-data` thinking it's a duplicate.
 
+## Results
+
+All on the **validation** set (4,003 images, 902 with pneumonia, 1,424 boxes). The test set is untouched until the final evaluation.
+
+### `baseline_n640`: yolo26n, 640 px, 30 epochs (2026-11-26)
+
+| Level | Metric | Value |
+|---|---|---|
+| Box | mAP50 / mAP50-95 | **0.383** / 0.150 |
+| Box | Precision / recall | 0.438 / 0.416 |
+| Box | Confusion @ conf 0.25, IoU 0.45 | TP 384 · FP 230 · FN 1040 (27% of boxes found) |
+| Image | ROC-AUC / PR-AUC | **0.901** / 0.728 |
+| Image | Sensitivity / specificity @ 0.25 | 0.368 / 0.977 (misses 570 of 902 positives; 72 false alarms of 3,101 negatives) |
+| Image, AP view (n=1,826) | ROC-AUC · sens · spec | 0.849 · 0.437 · 0.945 |
+| Image, PA view (n=2,177) | ROC-AUC · sens · spec | 0.903 · **0.129** · 0.995 |
+
+**Takeaways**
+
+- The model **ranks** images well (AUC 0.90), but the default 0.25 threshold is far too conservative for screening (sensitivity 37%). Threshold tuning should give a much better operating point.
+- **PA vs AP:** PA images rank well (AUC 0.90), but PA pneumonia gets lower confidence scores, so one threshold misses ~87% of PA cases. AP images rank worse (AUC 0.85; busier images, with lines and tubes). This could call for per-view thresholds or analysis.
+- From the training curve: the model is plateauing and likely capacity-limited, so a bigger model (yolo26s) is the first experiment.
+
 ## What's next
 
 In order, one step at a time:
 
-1. **Cluster data setup**, then the **smoke run** on the cluster.
+1. ~~**Cluster data setup**, then the **smoke run** on the cluster.~~ Done.
 2. ~~**Choose the baseline config.**~~ Decided: `yolo26n` at 640 px (fast reference). `yolo26s` at 640–768 px is the first bigger-model experiment.
-3. **Train the baseline and evaluate it on val:** the first numbers we can trust.
-4. **Experiments, one change at a time, compared on val:**
+3. ~~**Train the baseline and evaluate it on val.**~~ Done; see [Results](#results).
+4. **Threshold analysis, then yolo26s.** Decided 2026-11-26: threshold analysis first (code done; re-run the baseline val evaluation for its numbers), then the yolo26s 640 px experiment (`configs/s640.yaml`, same as baseline except the model).
+5. **Experiments, one change at a time, compared on val:**
    - Class imbalance: natural mix vs. oversampled pneumonia vs. fewer healthy images
    - Image size: 512 / 640 / 768 / 1024
    - Model size: n / s / m
    - Small extras: cosine LR schedule, CLAHE contrast preprocessing, test-time augmentation
-5. **Match the real task:** pick the confidence threshold on val, implement the RSNA competition metric, and optionally add an image-level classifier to cut false alarms.
-6. **Final:** evaluate the chosen model **once** on test, export it to ONNX, write up the results charts, and build the inference website.
+6. **Match the real task:** pick the confidence threshold on val, implement the RSNA competition metric, and optionally add an image-level classifier to cut false alarms.
+7. **Final:** evaluate the chosen model **once** on test, export it to ONNX, write up the results charts, and build the inference website.

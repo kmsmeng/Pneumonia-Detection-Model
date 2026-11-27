@@ -34,13 +34,14 @@ python src/train.py --config configs/smoke.yaml --no-wandb   # ~2-minute end-to-
 python src/train.py --config configs/baseline.yaml      # real run -> runs/detect/<name>/
 python src/train.py --config configs/baseline.yaml --set workers=8 batch=32   # per-machine overrides of `train:` keys
 python src/train.py --resume runs/detect/<name>         # continue an interrupted run (same W&B run)
-python src/evaluate.py runs/detect/<name>               # val: box mAP + image-level AUC/sens/spec + consistency checks
-python src/evaluate.py runs/detect/<name> --split test --confirm-test   # final, one-time test evaluation
+python src/evaluate.py runs/detect/<name>               # val: box mAP + image-level AUC/sens/spec + threshold operating points + consistency checks
+python src/evaluate.py runs/detect/<name> --split test --confirm-test   # final, one-time test evaluation (needs eval_val.json: applies val's thresholds)
 ```
 
 - The config's `name` is the run directory and the W&B run name. `train.py` refuses to reuse an existing name. A new experiment means a new config file.
 - Everything under `train:` in a config goes verbatim to Ultralytics `model.train()`. `train.py` starts the W&B run itself (logging the config, split fingerprint and git commit), and Ultralytics' callback logs into that same run.
 - Each run directory gets `config.yaml`, `provenance.json` (split fingerprint) and `wandb_id.txt`. `evaluate.py` refuses to evaluate a run trained on a different split.
+- `evaluate.py` writes `eval_<split>.json` and `eval_<split>_scores.csv` (per-image max-box score). Operating thresholds (90%/80% sensitivity, best F1; overall and per view) are **chosen on val only**. The test evaluation reuses them from `eval_val.json` and never re-picks them.
 - The split is 70/15/15 (18678/4003/4003 images, 22.5% positive), stratified on Target + view, seed 42. Never regenerate it with `--force` unless you are intentionally invalidating every trained model.
 
 ### Cluster (Magnolia HPC, SLURM): see `Magnolia_HPC.md`
