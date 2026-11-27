@@ -239,7 +239,8 @@ tail -f slurm/logs/<job>.out                            # live log
 | Cluster smoke run | ✅ Done 2026-11-26 | Full train + val on a P100 works end to end. Training: 3.2 batches/s (≈3× the laptop). Val pass: 19 s (laptop ~40 s). Inference: 2.3 ms/img (laptop 3.4 ms). 8 workers, AMP on. An earlier attempt failed on OpenCV's GUI build; fixed with `opencv-python-headless`. |
 | Baseline training | ✅ Done 2026-11-26 | `baseline_n640`: yolo26n, 640 px, 30 epochs, batch 16, 1 P100, 3.28 h. Ran all 30 epochs (no early stop). Chosen as a fast, cheap reference for later experiments. **Val (best.pt): mAP50 0.383, mAP50-95 0.150, P 0.442, R 0.415.** Trend: mAP50 0.09 → 0.31 by epoch 7, a slow climb to ~0.35, a jump at ~epoch 22 (mosaic off for the last 10 epochs), then flat at ~0.38. Val box loss flat (~1.90) since epoch 10, so it's plateauing, not overfitting. Train box loss is also barely falling (1.86 → 1.80), which suggests the nano model is capacity-limited. Bigger model or resolution are likely better levers than more epochs. |
 | Baseline evaluation (`evaluate.py`, val) | ✅ Done 2026-11-26 | See [Results](#results). Consistency checks passed (TP+FN = 1424 GT boxes, no warnings). Test set untouched. |
-| Threshold analysis in `evaluate.py` | ✅ Code done 2026-11-26 | Operating points (90%/80% sensitivity, best F1; overall + per view) chosen on val, applied unchanged on test; per-image scores CSV. Logic checked on synthetic data. **Next:** re-run the baseline val evaluation to get its numbers. |
+| Threshold analysis in `evaluate.py` | ✅ Done 2026-11-26 | Operating points (90%/80% sensitivity, best F1; overall + per view) chosen on val, applied unchanged on test; per-image scores CSV. Baseline re-evaluated on the cluster: best-F1 threshold 0.053 gives sens 0.81 / spec 0.82 (vs 0.37 / 0.98 at 0.25). See [Results](#results). |
+| yolo26s experiment (`s640`) | ⏳ Config ready | `configs/s640.yaml`: baseline with only the model changed (yolo26s). Estimated ~7–10 h on a P100. |
 | Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14; no reply as of 2026-11-25. Proceeding with the home folder + P100s. |
 
 > On the cluster, `data` inside the repo is a **symlink** to `~/pneumonia-data`: the same files, not a copy.
@@ -261,9 +262,25 @@ All on the **validation** set (4,003 images, 902 with pneumonia, 1,424 boxes). T
 | Image, AP view (n=1,826) | ROC-AUC · sens · spec | 0.849 · 0.437 · 0.945 |
 | Image, PA view (n=2,177) | ROC-AUC · sens · spec | 0.903 · **0.129** · 0.995 |
 
+**Threshold analysis (val, 2026-11-26).** Operating points chosen on val; these thresholds will be applied unchanged to test.
+
+| Group | Point | Threshold | Sens | Spec | Precision | F1 | Missed (FN) | False alarms (FP) |
+|---|---|---|---|---|---|---|---|---|
+| All | @ 0.25 (default) | 0.25 | 0.368 | 0.977 | — | — | 570 | 72 |
+| All | 90% sens | 0.0257 | 0.901 | 0.730 | 0.493 | 0.637 | 89 | 836 |
+| All | 80% sens | 0.0548 | 0.800 | 0.824 | 0.569 | 0.665 | 180 | 546 |
+| All | **best F1** | **0.0526** | **0.813** | **0.822** | 0.570 | **0.670** | 169 | 553 |
+| AP | 90% / 80% / best F1 | 0.042 / 0.072 / 0.080 | 0.900 / 0.800 / 0.786 | 0.579 / 0.714 / 0.742 | 0.571 / 0.635 / 0.655 | 0.698 / 0.708 / 0.714 | 70 / 140 / 150 | 474 / 322 / 290 |
+| PA | 90% / 80% / best F1 | 0.010 / 0.022 / 0.043 | 0.901 / 0.802 / 0.688 | 0.772 / 0.851 / 0.907 | 0.288 / 0.355 / 0.432 | 0.436 / 0.492 / 0.531 | 20 / 40 / 63 | 451 / 294 / 183 |
+
+Per-image scores: `runs/detect/baseline_n640/eval_val_scores.csv` (on the cluster).
+
 **Takeaways**
 
-- The model **ranks** images well (AUC 0.90), but the default 0.25 threshold is far too conservative for screening (sensitivity 37%). Threshold tuning should give a much better operating point.
+- The model **ranks** images well (AUC 0.90), but the default 0.25 threshold is far too conservative for screening (sensitivity 37%).
+- **Threshold tuning more than doubles sensitivity:** at the best-F1 threshold (~0.05), sensitivity goes 0.37 → 0.81 (missed cases 570 → 169), at the cost of specificity 0.98 → 0.82 (false alarms 72 → 553). No retraining needed.
+- **The model's confidences are low:** the useful thresholds are 0.01–0.08, not 0.25. Its scores rank well but aren't calibrated probabilities. The website slider should default near 0.05, not 0.25.
+- **PA needs a much lower threshold than AP** (80% sens: 0.022 vs 0.072), confirming per-view behaviour. PA precision is low (0.29–0.43) mostly because pneumonia is rarer in PA (~9% of PA images vs ~38% of AP), so the same specificity yields relatively more false alarms. A single overall threshold is simpler (the website won't know the view); per-view thresholds are an option if the view is known.
 - **PA vs AP:** PA images rank well (AUC 0.90), but PA pneumonia gets lower confidence scores, so one threshold misses ~87% of PA cases. AP images rank worse (AUC 0.85; busier images, with lines and tubes). This could call for per-view thresholds or analysis.
 - From the training curve: the model is plateauing and likely capacity-limited, so a bigger model (yolo26s) is the first experiment.
 
@@ -274,7 +291,8 @@ In order, one step at a time:
 1. ~~**Cluster data setup**, then the **smoke run** on the cluster.~~ Done.
 2. ~~**Choose the baseline config.**~~ Decided: `yolo26n` at 640 px (fast reference). `yolo26s` at 640–768 px is the first bigger-model experiment.
 3. ~~**Train the baseline and evaluate it on val.**~~ Done; see [Results](#results).
-4. **Threshold analysis, then yolo26s.** Decided 2026-11-26: threshold analysis first (code done; re-run the baseline val evaluation for its numbers), then the yolo26s 640 px experiment (`configs/s640.yaml`, same as baseline except the model).
+4. ~~**Threshold analysis.**~~ Done; see [Results](#results).
+   **Now:** the yolo26s 640 px experiment (`configs/s640.yaml`, same as baseline except the model). Compare it with the baseline on val: mAP50, image ROC-AUC, and the best-F1 / 80%-sensitivity operating points.
 5. **Experiments, one change at a time, compared on val:**
    - Class imbalance: natural mix vs. oversampled pneumonia vs. fewer healthy images
    - Image size: 512 / 640 / 768 / 1024
