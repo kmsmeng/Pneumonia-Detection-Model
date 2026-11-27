@@ -1,0 +1,29 @@
+# Experiment: full resolution. Identical to baseline.yaml except `name` and `imgsz` (640 -> 1024, the
+# native size of the X-rays), so any difference vs. baseline_n640 comes from resolution alone.
+# Everything under `train:` is passed verbatim to Ultralytics `model.train()`.
+name: n1024
+wandb_project: rsna-pneumonia-detection
+model: models/yolo26n.pt
+data: data/yolo/data.yaml
+
+train:
+  epochs: 30
+  patience: 10
+  imgsz: 1024
+  batch: 16          # same as baseline; ~7 GB on a 12 GB P100 (too big for the 4 GB laptop GPU)
+  workers: 2         # laptop default; train.sbatch overrides it on the cluster
+  optimizer: auto
+  seed: 0
+  deterministic: true
+  plots: true
+  # augmentation: X-rays are grayscale, so hue/saturation jitter is meaningless
+  hsv_h: 0.0
+  hsv_s: 0.0
+  hsv_v: 0.4
+  fliplr: 0.5
+  flipud: 0.0
+  degrees: 0.0
+  translate: 0.1
+  scale: 0.5
+  mosaic: 1.0
+  close_mosaic: 10

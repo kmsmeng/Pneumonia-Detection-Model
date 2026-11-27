@@ -187,7 +187,7 @@ Estimates for bigger configs on one P100 (not yet measured):
 | Config | Per epoch | 30 epochs |
 |---|---|---|
 | yolo26n, 768 px | ~9 min | ~4.5 h |
-| yolo26s, 640 px | ~13–20 min | ~7–10 h |
+| yolo26s, 640 px | **~9.5 min (measured)** | **~4.7 h** (measured 2026-11-26: 2.2 batches/s at batch 16, 5.6 GB GPU memory) |
 | yolo26s, 768 px | ~20–28 min | ~10–14 h |
 
 - The cluster measured ~3× faster than the laptop for the same config. Most of the gain is likely from data loading: 8 workers on the cluster vs. 2 on the laptop, where more ran out of RAM.
@@ -240,7 +240,8 @@ tail -f slurm/logs/<job>.out                            # live log
 | Baseline training | ✅ Done 2026-11-26 | `baseline_n640`: yolo26n, 640 px, 30 epochs, batch 16, 1 P100, 3.28 h. Ran all 30 epochs (no early stop). Chosen as a fast, cheap reference for later experiments. **Val (best.pt): mAP50 0.383, mAP50-95 0.150, P 0.442, R 0.415.** Trend: mAP50 0.09 → 0.31 by epoch 7, a slow climb to ~0.35, a jump at ~epoch 22 (mosaic off for the last 10 epochs), then flat at ~0.38. Val box loss flat (~1.90) since epoch 10, so it's plateauing, not overfitting. Train box loss is also barely falling (1.86 → 1.80), which suggests the nano model is capacity-limited. Bigger model or resolution are likely better levers than more epochs. |
 | Baseline evaluation (`evaluate.py`, val) | ✅ Done 2026-11-26 | See [Results](#results). Consistency checks passed (TP+FN = 1424 GT boxes, no warnings). Test set untouched. |
 | Threshold analysis in `evaluate.py` | ✅ Done 2026-11-26 | Operating points (90%/80% sensitivity, best F1; overall + per view) chosen on val, applied unchanged on test; per-image scores CSV. Baseline re-evaluated on the cluster: best-F1 threshold 0.053 gives sens 0.81 / spec 0.82 (vs 0.37 / 0.98 at 0.25). See [Results](#results). |
-| yolo26s experiment (`s640`) | ⏳ Config ready | `configs/s640.yaml`: baseline with only the model changed (yolo26s). Estimated ~7–10 h on a P100. |
+| yolo26s experiment (`s640`) | ✅ Done 2026-11-27 | `configs/s640.yaml`: baseline with only the model changed (yolo26s). 2.2 batches/s, 5.6 GB GPU memory, ~4.7 h. Speed: only ~1.45× slower than nano (3.2 batches/s), so nano was likely limited by data loading rather than the GPU. **Val: mAP50 0.391 vs 0.383, image AUC 0.902 vs 0.901, best F1 0.670 vs 0.670: no real gain.** Run + eval copied to the laptop. |
+| Full-resolution experiment (`n1024`) | ⏳ Config ready 2026-11-27 | `configs/n1024.yaml`: baseline with only `imgsz` 640 → 1024. Expected ~5–6 h and ~7 GB GPU memory on a P100. |
 | Scratch directory / A100 access | ⏳ Waiting | Email sent to the cluster admin 2026-11-14; no reply as of 2026-11-25. Proceeding with the home folder + P100s. |
 
 > On the cluster, `data` inside the repo is a **symlink** to `~/pneumonia-data`: the same files, not a copy.
@@ -282,7 +283,42 @@ Per-image scores: `runs/detect/baseline_n640/eval_val_scores.csv` (on the cluste
 - **The model's confidences are low:** the useful thresholds are 0.01–0.08, not 0.25. Its scores rank well but aren't calibrated probabilities. The website slider should default near 0.05, not 0.25.
 - **PA needs a much lower threshold than AP** (80% sens: 0.022 vs 0.072), confirming per-view behaviour. PA precision is low (0.29–0.43) mostly because pneumonia is rarer in PA (~9% of PA images vs ~38% of AP), so the same specificity yields relatively more false alarms. A single overall threshold is simpler (the website won't know the view); per-view thresholds are an option if the view is known.
 - **PA vs AP:** PA images rank well (AUC 0.90), but PA pneumonia gets lower confidence scores, so one threshold misses ~87% of PA cases. AP images rank worse (AUC 0.85; busier images, with lines and tubes). This could call for per-view thresholds or analysis.
-- From the training curve: the model is plateauing and likely capacity-limited, so a bigger model (yolo26s) is the first experiment.
+- From the training curve: the model is plateauing and likely capacity-limited, so a bigger model (yolo26s) is the first experiment. *(Update 2026-11-27: `s640` showed this was mostly wrong; see below.)*
+
+### `s640`: yolo26s, 640 px, 30 epochs (2026-11-27)
+
+**`evaluate.py` on val (best.pt), side by side:**
+
+| Metric | baseline_n640 | s640 |
+|---|---|---|
+| Box mAP50 / mAP50-95 | 0.383 / 0.150 | 0.391 / 0.153 |
+| Box confusion @ 0.25 (TP / FP / FN) | 384 / 230 / 1040 | 377 / 188 / 1047 |
+| Image ROC-AUC / PR-AUC | 0.901 / 0.728 | 0.902 / 0.734 |
+| AP view AUC · PA view AUC | 0.849 · 0.903 | 0.852 · 0.906 |
+| Best F1 (threshold → sens / spec) | **0.670** (0.053 → 0.813 / 0.822) | **0.670** (0.060 → 0.771 / 0.846) |
+| 80% sens point: spec (FP) | 0.824 (546) | 0.821 (556) |
+| 90% sens point: spec (FP) | 0.730 (836) | 0.736 (820) |
+
+Every difference is within noise (AUC on ~900 positives has a standard error of roughly ±0.005). **At the image level the two models are practically identical**, so the nano model remains the better choice (4× smaller and faster, which also matters for in-browser inference).
+
+Training-curve comparison:
+
+| Metric (training-time val, last/best epoch) | baseline_n640 | s640 | Δ |
+|---|---|---|---|
+| mAP50 | 0.383 (best, ep 27) | **0.390** (best = ep 30) | +0.007 |
+| mAP50-95 | 0.149 | 0.153 | +0.004 |
+| Precision / recall | 0.435 / 0.430 | 0.444 / 0.418 | ≈ |
+| Final train box loss | 1.749 | 1.794 | none better |
+| Final val box loss | 1.902 | 1.928 | ≈ |
+| Time (1× P100) | 3.3 h | 4.7 h | +43% |
+
+**Takeaways**
+
+- **~4× the parameters gave ~+0.007 mAP50**, which is within run-to-run noise. Model size is **not** the main bottleneck at 640 px.
+- The bigger model doesn't fit the *training* data better either (train box loss 1.79 vs 1.75), so "capacity-limited" was the wrong diagnosis. More likely limits: **resolution** (faint opacities lose detail when 1024 px images shrink to 640) and **label noise** (RSNA radiologists often disagreed on boxes, which caps achievable mAP).
+- s640 was still creeping up at epoch 30 (0.386 → 0.390 over the last 5 epochs) while the baseline was flat; more epochs might add a little.
+- Early training was noisier (mAP50 bounced 0.13–0.30 in epochs 1–11), and epoch 5 logged a `NaN` val loss (mAP was still computed). It recovered on its own, likely a one-off fp16 overflow in the val loss; harmless here, but worth watching in future runs.
+- The image-level evaluation confirms it: same AUC (0.902 vs 0.901), same best F1 (0.670).
 
 ## What's next
 
@@ -292,7 +328,11 @@ In order, one step at a time:
 2. ~~**Choose the baseline config.**~~ Decided: `yolo26n` at 640 px (fast reference). `yolo26s` at 640–768 px is the first bigger-model experiment.
 3. ~~**Train the baseline and evaluate it on val.**~~ Done; see [Results](#results).
 4. ~~**Threshold analysis.**~~ Done; see [Results](#results).
-   **Now:** the yolo26s 640 px experiment (`configs/s640.yaml`, same as baseline except the model). Compare it with the baseline on val: mAP50, image ROC-AUC, and the best-F1 / 80%-sensitivity operating points.
+   ~~**yolo26s 640 px**~~ Done: no real gain over nano (mAP50 0.391 vs 0.383; AUC and best F1 identical). Model size is not the lever at 640 px.
+   **Now: `n1024`** (decided 2026-11-27): nano at 1024 px (full resolution), 30 epochs, otherwise identical to the baseline, so it tests resolution alone. Plan after it, one change per run:
+   - If 1024 helps → `s1024` (batch 8, since s at 1024 likely won't fit 12 GB at batch 16): does model size pay off at full resolution?
+   - If not → resolution isn't the lever; move on to class balance.
+   - Longer training (more epochs) goes last, on the winning config.
 5. **Experiments, one change at a time, compared on val:**
    - Class imbalance: natural mix vs. oversampled pneumonia vs. fewer healthy images
    - Image size: 512 / 640 / 768 / 1024
